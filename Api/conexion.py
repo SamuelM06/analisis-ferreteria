@@ -36,7 +36,7 @@ else:
     exit(1)
 
 # URL del endpoint de api
-api_url = "https://api.siigo.com/v1/customers"
+api_url = "https://api.siigo.com/v1/invoices?created_start=2021-02-17"
 
 # Headers para la consulta (aquí agregamos Partner-Id)
 headers_api = {
