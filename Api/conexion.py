@@ -49,7 +49,7 @@ headers_api = {
 response_api = requests.get(api_url, headers=headers_api)
 if response_api.status_code == 200:
     api = response_api.json()
-    print(json.dumps(api, indent=4, ensure_ascii=False))
+    print(api)
 else:
     print("Error al obtener api:")
     print(response_api.status_code)
