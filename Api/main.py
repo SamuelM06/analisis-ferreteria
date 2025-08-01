@@ -3,7 +3,7 @@ import requests
 import os
 os.system("cls")  
 
-# DATOS DE ACCESO
+# Datos de acceso
 usuario = "shirleymariadiazherrera@gmail.com"
 access_key = "ZDE4ODEzOTItZDQ3NC00NTNhLTg3NDYtNzRjOTI4NGQ4ZmJiOk5IaG0oNXsjL0E="
 
@@ -21,6 +21,7 @@ def get_token():
         token_data = response.json()
         access_token = token_data["access_token"]
         print("TOKEN obtenido correctamente.")
+        print("Cargando los datos.....")
         return access_token
     else:
         print(f"Error de autenticación: {response.status_code}")

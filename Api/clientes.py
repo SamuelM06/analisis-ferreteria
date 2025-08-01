@@ -1,8 +1,11 @@
 import requests
 import pandas as pd
-
+from datetime import date, timedelta
 def get_clientes(access_token):
-    api_url = "https://api.siigo.com/v1/customers"
+    Date_last = date.today() - timedelta(days=1)
+    Looking_Type = 'created_end'
+    reference_type = 'customers'
+    api_url = f"https://api.siigo.com/v1/{reference_type}?{Looking_Type}={Date_last}"
     headers_api = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
