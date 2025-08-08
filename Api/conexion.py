@@ -28,24 +28,16 @@ def get_connection():
 def insert_customers(df: pd.DataFrame):
     """
     Inserta solo clientes que NO existan ya en la tabla STG.customers.
-    Limpia customer_name (y otros campos si quieres) SOLO si es lista o None.
     """
     conn, cursor = get_connection()
     try:
-        # LIMPIEZA SOLO customer_name: si es lista, une; si None, convierte a vacío
-        def simple_clean(val):
-            if isinstance(val, list):
-                return " ".join(str(x) for x in val if x is not None)
-            if val is None:
-                return ""
-            return str(val)
-        
-        df["customer_name"] = df["customer_name"].apply(simple_clean)
-        # Si quieres aplicar limpieza a otros campos de texto (opcional), agrega igual lógica aquí
-        
+        # Asegurarse de que las columnas booleanas y numéricas sean manejadas correctamente
+        df['customer_active'] = df['customer_active'].astype(bool)
+        df['customer_vat_responsible'] = df['customer_vat_responsible'].astype(bool)
+
         df = df.where(pd.notnull(df), None)
 
-        # Filtra solo clientes nuevos (evita duplicados)
+        # Filtrar solo clientes nuevos (evitar duplicados)
         cursor.execute("SELECT customer_id FROM STG.customers")
         db_ids = set(row[0] for row in cursor.fetchall())
         nuevos_df = df[~df['customer_id'].isin(db_ids)]
@@ -55,15 +47,16 @@ def insert_customers(df: pd.DataFrame):
         else:
             SQL = """
                 INSERT INTO STG.customers (
-                    customer_id, customer_name, customer_identification, customer_phone,
-                    customer_email, customer_type
-                )
-                VALUES (?, ?, ?, ?, ?, ?)
-            """
+                    customer_id, customer_type, customer_identification, customer_name, customer_active,
+                    customer_vat_responsible, customer_id_type_name, customer_fiscal_responsibility_name,
+                    customer_address, customer_city_name, customer_state_name, customer_phone_number, customer_email
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
             data = [
                 (
-                    row.customer_id, row.customer_name, row.customer_identification, 
-                    row.customer_phone, row.customer_email, row.customer_type
+                    row.customer_id, row.customer_type, row.customer_identification, row.customer_name, row.customer_active,
+                    row.customer_vat_responsible, row.customer_id_type_name, row.customer_fiscal_responsibility_name,
+                    row.customer_address, row.customer_city_name, row.customer_state_name, row.customer_phone_number, row.customer_email
                 )
                 for row in nuevos_df.itertuples(index=False)
             ]
@@ -80,35 +73,16 @@ def insert_customers(df: pd.DataFrame):
 def insert_products(df: pd.DataFrame):
     """
     Inserta solo productos que NO existan ya en la tabla STG.products (por product_id).
-    Limpia tipos: Texto puro para campos de texto, números válidos para DECIMAL(10,2)/(5,2).
     """
     conn, cursor = get_connection()
     try:
-        # LIMPIEZA DE TEXTOS (garantiza string, nunca None)
-        for col in ["product_code", "product_name", "product_reference", "product_description"]:
-            if col in df.columns:
-                df[col] = df[col].apply(lambda x: "" if x is None else str(x))
-        
-        # LIMPIEZA Y REDONDEO DE DECIMALES
-        def safe_decimal(val, decimals):
-            try:
-                if val is None or val == "" or (isinstance(val, float) and pd.isna(val)):
-                    return None
-                # Si el valor viene con coma o símbolo
-                f = float(str(val).replace(",", ".").replace("$", "").strip())
-                return round(f, decimals)
-            except Exception:
-                return None
-
-        if "product_price" in df.columns:
-            df["product_price"] = df["product_price"].apply(lambda v: safe_decimal(v, 2))
-        if "product_tax" in df.columns:
-            df["product_tax"] = df["product_tax"].apply(lambda v: safe_decimal(v, 2))
-
+        # Asegurarse de que los valores nulos sean None
         df = df.where(pd.notnull(df), None)
 
+        # Traer los IDs existentes para evitar duplicados
         cursor.execute("SELECT product_id FROM STG.products")
         db_ids = set(row[0] for row in cursor.fetchall())
+
         nuevos_df = df[~df['product_id'].isin(db_ids)]
 
         if nuevos_df.empty:
@@ -116,15 +90,14 @@ def insert_products(df: pd.DataFrame):
         else:
             SQL = """
                 INSERT INTO STG.products (
-                    product_id, product_code, product_name, product_reference,
-                    product_description, product_price, product_tax
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """
+                    product_id, product_code, product_name, product_price, product_cost,
+                    product_stock, product_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """
             data = [
                 (
-                    row.product_id, row.product_code, row.product_name, row.product_reference, 
-                    row.product_description, row.product_price, row.product_tax
+                    row.product_id, row.product_code, row.product_name, row.product_price, row.product_cost,
+                    row.product_stock, row.product_status
                 )
                 for row in nuevos_df.itertuples(index=False)
             ]
