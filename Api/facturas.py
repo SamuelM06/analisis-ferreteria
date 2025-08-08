@@ -1,22 +1,29 @@
 import requests
 import pandas as pd
-from datetime import date, timedelta
 
 def get_facturas(access_token):
-    Date_last = date.today() - timedelta(days=1)
-    Looking_Type = 'created_end'
+    """
+    Obtiene todas las facturas, recorriendo todas las páginas.
+    """
     reference_type = 'invoices'
-    api_url = f"https://api.siigo.com/v1/{reference_type}?{Looking_Type}={Date_last}"
+    base_url = f"https://api.siigo.com/v1/{reference_type}"
     headers_api = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
         "Partner-Id": "AnalisisFerreteria"
     }
-    response_api = requests.get(api_url, headers=headers_api)
-    flattened_data = []
-    if response_api.status_code == 200:
+    all_data = []
+    page = 1
+    while True:
+        api_url = f"{base_url}?page={page}"
+        response_api = requests.get(api_url, headers=headers_api)
+        if response_api.status_code != 200:
+            print(f"Error en página {page}: {response_api.status_code}")
+            break
         api = response_api.json()
-        result_data = api['results']
+        result_data = api.get('results', [])
+        if not result_data:
+            break  # No hay más páginas
         for invoice in result_data:
             invoice_id = invoice.get('id')
             invoice_number = invoice.get('number')
@@ -49,7 +56,7 @@ def get_facturas(access_token):
                         'item_description': item.get('description'),
                         'item_total': item.get('total')
                     }
-                    flattened_data.append(row)
+                    all_data.append(row)
             else:
                 row = {
                     'invoice_id': invoice_id,
@@ -68,12 +75,7 @@ def get_facturas(access_token):
                     'item_description': None,
                     'item_total': None
                 }
-                flattened_data.append(row)
-        df = pd.DataFrame(flattened_data)
-        print(df)
-        return df
-    else:
-        print("Error al obtener api:")
-        print(response_api.status_code)
-        print(response_api.text)
-        return None
+                all_data.append(row)
+        page += 1
+    df = pd.DataFrame(all_data)
+    return df

@@ -1,22 +1,29 @@
 import requests
 import pandas as pd
-from datetime import date, timedelta
 
 def get_productos(access_token):
-    Date_last = date.today() - timedelta(days=1)
-    Looking_Type = 'created_end'
+    """
+    Trae todos los productos, recorriendo todas las páginas de resultados.
+    """
     reference_type = 'products'
-    api_url = f"https://api.siigo.com/v1/{reference_type}?{Looking_Type}={Date_last}"
+    base_url = f"https://api.siigo.com/v1/{reference_type}"
     headers_api = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
         "Partner-Id": "AnalisisFerreteria"
     }
-    response_api = requests.get(api_url, headers=headers_api)
-    flattened_data = []
-    if response_api.status_code == 200:
+    all_data = []
+    page = 1
+    while True:
+        api_url = f"{base_url}?page={page}"
+        response_api = requests.get(api_url, headers=headers_api)
+        if response_api.status_code != 200:
+            print(f"Error en página {page}: {response_api.status_code}")
+            break
         api = response_api.json()
-        result_data = api['results']
+        result_data = api.get('results', [])
+        if not result_data:
+            break
         for producto in result_data:
             row = {
                 'product_id': producto.get('id'),
@@ -26,14 +33,9 @@ def get_productos(access_token):
                 'product_description': producto.get('description'),
                 'product_price': producto.get('price'),
                 'product_tax': producto.get('tax'),
-                # Agrega aquí otros campos que necesites
+                # Otros campos si necesitas
             }
-            flattened_data.append(row)
-        df = pd.DataFrame(flattened_data)
-        print(df)
-        return df
-    else:
-        print("Error al obtener productos:")
-        print(response_api.status_code)
-        print(response_api.text)
-        return None
+            all_data.append(row)
+        page += 1
+    df = pd.DataFrame(all_data)
+    return df

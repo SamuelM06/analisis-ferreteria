@@ -1,3 +1,6 @@
+DROP DATABASE ferreteria_db;
+use TestDB_Python;
+
 -- Crear la base de datos
 CREATE DATABASE ferreteria_db;
 GO
@@ -46,7 +49,7 @@ CREATE TABLE STG.invoices (
     payment_value DECIMAL(10, 2),
     item_id VARCHAR(50),
     item_code VARCHAR(50),
-    item_quantity INT,
+    item_quantity DECIMAL(18,6),
     item_price DECIMAL(10, 2),
     item_description VARCHAR(255),
     item_total DECIMAL(10, 2)
@@ -58,3 +61,7 @@ Select * from STG.invoices;
 Select * from STG.products;
 
 
+ALTER TABLE STG.invoices
+ALTER COLUMN item_quantity DECIMAL(18,6);
+
+select * from STG.invoices where invoice_date = '2025-02-05';
