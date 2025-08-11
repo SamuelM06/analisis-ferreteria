@@ -44,7 +44,7 @@ if __name__ == '__main__':
     # except Exception as e:
     #     print(f"Error con clientes: {e}")
 
-    # # --- PRODUCTOS ---
+    # --- PRODUCTOS ---
     # try:
     #     import productos
     #     print("Obteniendo productos...")
@@ -54,15 +54,17 @@ if __name__ == '__main__':
     # except Exception as e:
     #     print(f"Error con productos: {e}")
 
-    # # --- FACTURAS ---
-    # try:
-    #     import facturas
-    #     print("Obteniendo facturas...")
-    #     df_facturas = facturas.get_facturas(access_token)
-    #     df_facturas = df_facturas.where(pd.notnull(df_facturas), None)
-    #     insert_invoices(df_facturas)
-    # except Exception as e: 
-    #     print(f"Error con facturas: {e}")
+    # --- FACTURAS ---
+    try:
+        import facturas
+        print("Obteniendo facturas...")
+        df_facturas = facturas.get_facturas(access_token)
+        df_facturas = df_facturas.where(pd.notnull(df_facturas), None)
+        insert_invoices(df_facturas)
+    except Exception as e: 
+        print(f"Error con facturas: {e}")
 
     print("\n¡PROCESO COMPLETADO - FELICIDADES! Puedes consultar ahora en SQL Server....")
+
+
 

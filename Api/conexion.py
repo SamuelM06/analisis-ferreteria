@@ -3,9 +3,11 @@ import pandas as pd
 import time
 import logging
 import requests
+import math
+
 
 logging.basicConfig(filename="errores_invoices.log", level=logging.WARNING,
-                    format="%(asctime)s - %(levelname)s - %(message)s")
+format="%(asctime)s - %(levelname)s - %(message)s")
 
 server = 'LAPTOP-EIDER\\SQLDEV2022'
 database = 'ferreteria_db'   
@@ -72,40 +74,74 @@ def insert_customers(df: pd.DataFrame):
 
 def insert_products(df: pd.DataFrame):
     """
-    Inserta solo productos que NO existan ya en la tabla STG.products (por product_id).
+    Inserta solo productos nuevos en STG.products con datos extendidos.
+    Convierte valores numéricos y controla precisión para SQL Server.
     """
     conn, cursor = get_connection()
     try:
-        # Asegurarse de que los valores nulos sean None
+        # Limpiar NaN -> None
         df = df.where(pd.notnull(df), None)
 
-        # Traer los IDs existentes para evitar duplicados
+        # Evitar duplicados
         cursor.execute("SELECT product_id FROM STG.products")
-        db_ids = set(row[0] for row in cursor.fetchall())
-
+        db_ids = set(str(row[0]) for row in cursor.fetchall())
         nuevos_df = df[~df['product_id'].isin(db_ids)]
 
         if nuevos_df.empty:
             print("[STG.products] No hay productos nuevos para insertar.")
-        else:
-            SQL = """
-                INSERT INTO STG.products (
-                    product_id, product_code, product_name, product_price, product_cost,
-                    product_stock, product_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """
-            data = [
-                (
-                    row.product_id, row.product_code, row.product_name, row.product_price, row.product_cost,
-                    row.product_stock, row.product_status
-                )
-                for row in nuevos_df.itertuples(index=False)
-            ]
-            cursor.executemany(SQL, data)
-            conn.commit()
-            print(f"[STG.products] {len(data)} productos nuevos insertados.")
+            return
+
+        # Función para limpieza de decimales
+        def safe_float(val):
+            try:
+                if val is None or (isinstance(val, float) and math.isnan(val)):
+                    return None
+                return round(float(val), 2)
+            except (ValueError, TypeError):
+                return None
+
+        # Normalizar numéricos
+        nuevos_df['product_price'] = nuevos_df['product_price'].apply(lambda x: safe_float(x) or 0.0)
+        nuevos_df['product_stock'] = nuevos_df['product_stock'].apply(lambda x: safe_float(x) or 0.0)
+
+        # SQL con todos los campos
+        SQL = """
+            INSERT INTO STG.products (
+                product_id, product_code, product_name, product_price,
+                product_stock, product_status, category_name, product_type,
+                tax_classification, tax_included, unit_label, brand,
+                created_date, last_updated, has_stock_control, warehouse_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+
+        data = [
+            (
+                row.product_id,
+                row.product_code,
+                row.product_name,
+                row.product_price,
+                row.product_stock,
+                row.product_status,
+                row.category_name,
+                row.product_type,
+                row.tax_classification,
+                row.tax_included,
+                row.unit_label,
+                row.brand,
+                row.created_date,
+                row.last_updated,
+                row.has_stock_control,
+                row.warehouse_count
+            )
+            for row in nuevos_df.itertuples(index=False)
+        ]
+
+        cursor.executemany(SQL, data)
+        conn.commit()
+        print(f"[STG.products] {len(data)} productos nuevos insertados.")
+
     except Exception as e:
-        print(f"Error insertando en STG.products: {e}")
+        print(f"[ERROR] Insertando en STG.products: {e}")
         conn.rollback()
     finally:
         cursor.close()
