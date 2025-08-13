@@ -43,51 +43,48 @@ CREATE TABLE STG.customers (
 );
 GO
 
--- Tabla STG.invoices (sin cambios ya que está completa)
+
 CREATE TABLE STG.invoices (
-    invoice_id VARCHAR(50),
-    invoice_number VARCHAR(50),
-    invoice_date DATE,
-    invoice_total DECIMAL(10, 2),
-    seller_id VARCHAR(50),
-    customer_id VARCHAR(50),
-    customer_identification VARCHAR(50),
-    payment_method VARCHAR(50),
-    payment_value DECIMAL(10, 2),
-    item_id VARCHAR(50),
-    item_code VARCHAR(50),
-    item_quantity DECIMAL(18,6),
-    item_price DECIMAL(10, 2),
-    item_description VARCHAR(255),
-    item_total DECIMAL(10, 2)
+    -- Claves principales
+    invoice_id        VARCHAR(50)     NOT NULL,  -- ID de la factura en Siigo
+    item_id           VARCHAR(50)     NOT NULL,  -- ID del ítem (línea de factura)
+
+    -- Datos de la factura
+    invoice_number    VARCHAR(50),              -- Número de factura
+    invoice_date      DATETIME,                 -- Fecha de emisión
+    status            VARCHAR(50),              -- Estado de la factura (ej: Paid, Draft, Cancelled)
+    created_date      DATETIME,                 -- Fecha de creación en Siigo
+    last_updated      DATETIME,                 -- Fecha de última modificación en Siigo
+
+    -- Datos del cliente
+    customer_id       VARCHAR(50),              -- ID del cliente en Siigo
+    customer_name     VARCHAR(200),             -- Nombre del cliente
+    customer_email    VARCHAR(200),             -- Correo electrónico
+    customer_phone    VARCHAR(50),              -- Teléfono
+
+    -- Datos del vendedor y bodega
+    seller_name       VARCHAR(150),             -- Nombre del vendedor
+    warehouse_name    VARCHAR(150),             -- Nombre de la bodega
+
+    -- Detalle del ítem
+    product_id        VARCHAR(50),              -- ID del producto
+    item_description  VARCHAR(MAX),             -- Descripción del ítem
+    item_quantity     DECIMAL(18,6),             -- Cantidad
+    item_price        DECIMAL(18,2),             -- Precio unitario
+    item_total        DECIMAL(18,2),             -- Total línea
+    item_tax          DECIMAL(10,2),             -- Impuesto aplicado
+    item_discount     DECIMAL(10,2),             -- Descuento aplicado
+
+    -- Información financiera extra
+    currency          VARCHAR(10),              -- Moneda
+    payment_method    VARCHAR(50),              -- Forma de pago
+    due_date          DATETIME,                 -- Fecha de vencimiento
+    reference_number  VARCHAR(50),              -- Número de referencia
+    document_type     VARCHAR(50),              -- Tipo de documento
+
+    -- Observaciones
+    notes             VARCHAR(MAX),             -- Notas de la factura
 );
 GO
-
-Select * from STG.customers;
-Select * from STG.invoices;
-Select * from STG.products;
-
-
-ALTER TABLE STG.invoices
-ALTER COLUMN item_quantity DECIMAL(18,6);
-
-SELECT * FROM STG.invoices
-ORDER BY invoice_date ASC;
-
--- Limpia la tabla productos
-TRUNCATE TABLE STG.products;
-
-ALTER TABLE STG.products
-ADD category_name VARCHAR(100),  -- Nombre categoría
-    product_type  VARCHAR(50);   -- Tipo de producto
-GO
-ALTER TABLE STG.products
-ADD tax_classification VARCHAR(50),  -- Excluded, Exempt, Taxed
-    tax_included BIT,                -- 1 si el precio incluye IVA, 0 si no
-    unit_label VARCHAR(50),          -- Unidad de medida escrita (ej: unidad, metro, caja)
-    brand VARCHAR(100),              -- Marca del producto
-    created_date DATETIME,           -- Fecha de creación en Siigo
-    last_updated DATETIME,           -- Última actualización en Siigo
-    has_stock_control BIT,           -- 1 si Siigo controla stock, 0 si no
-    warehouse_count INT;              -- Número de bodegas en las que está el producto
-GO
+TRUNCATE TABLE STG.invoices;
+SELECT * FROM STG.invoices;

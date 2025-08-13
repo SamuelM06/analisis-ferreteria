@@ -4,14 +4,20 @@ import time
 import logging
 import requests
 import math
+from datetime import datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import uuid
 
-
-logging.basicConfig(filename="errores_invoices.log", level=logging.WARNING,
-format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    filename="errores_invoices.log",
+    level=logging.WARNING,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 server = 'LAPTOP-EIDER\\SQLDEV2022'
 database = 'ferreteria_db'   
 
+#conexion SQL Server
 conn_str = (
     'DRIVER={ODBC Driver 17 for SQL Server};'
     f'SERVER={server};'
@@ -25,7 +31,6 @@ def get_connection():
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
     return conn, cursor
-
 
 def insert_customers(df: pd.DataFrame):
     """
@@ -147,110 +152,89 @@ def insert_products(df: pd.DataFrame):
         cursor.close()
         conn.close()
 
-def fetch_invoices_page(url, headers, retries=3, delay=5):
-    """
-    Intenta obtener una página de facturas, reintentando si hay error HTTP 500.
-    """
-    for intento in range(1, retries + 1):
-        try:
-            response = requests.get(url, headers=headers, timeout=60)
-            if response.status_code == 200:
-                return response.json()
-            elif response.status_code == 500:
-                print(f"[WARN] Error 500 en {url}, intento {intento} de {retries}. Reintentando en {delay}s...")
-                time.sleep(delay)
-            else:
-                response.raise_for_status()
-        except Exception as e:
-            print(f"[ERROR] Fallo conexión al obtener página: {e}")
-            time.sleep(delay)
-    print(f"[ERROR] No se pudo obtener la página después de {retries} intentos: {url}")
-    return None
+    if pd.isna(val) or val is None:
+        return None
+    if isinstance(val, datetime):
+        return val
+    try:
+        return datetime.strptime(str(val)[:10], "%Y-%m-%d")
+    except:
+        return None
+
+def safe_get(data, *keys):
+    """Extrae un valor anidado de forma segura"""
+    for key in keys:
+        if data is None:
+            return None
+        if isinstance(data, dict):
+            data = data.get(key)
+        else:
+            return None
+    return data
 
 def insert_invoices(df: pd.DataFrame):
-    """
-    Inserta solo facturas nuevas por (invoice_id, item_id) en STG.invoices.
-    Limpia datos problemáticos para que sean compatibles con DECIMAL según SQL Server.
-    """
+    if df.empty:
+        print("[STG.invoices] No hay datos para procesar.")
+        return
+
+    # 🔹 Aseguramos que invoice_id no sea nulo antes de comparar
+    df["invoice_id"] = df["invoice_id"].apply(lambda x: str(x).strip() if pd.notna(x) and str(x).strip() != "" else str(uuid.uuid4()))
+    df["item_id"] = df["item_id"].apply(lambda x: str(x).strip() if pd.notna(x) and str(x).strip() != "" else "")
+
     conn, cursor = get_connection()
     try:
-        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+        # 1️⃣ Obtener registros existentes (tratando NULL como "")
+        cursor.execute("SELECT ISNULL(invoice_id,''), ISNULL(item_id,'') FROM STG.invoices")
+        existentes = set((str(row[0]).strip(), str(row[1]).strip()) for row in cursor.fetchall())
 
-        def clean_decimal(value, precision, max_digits, col_name):
-            try:
-                if value is None or pd.isna(value):
-                    return None
-                value = str(value).strip()
-                if value == "":
-                    return None
+        # 2️⃣ Filtrar solo los nuevos
+        nuevos = df[~df.apply(lambda x: (str(x["invoice_id"]).strip(), str(x["item_id"]).strip()) in existentes, axis=1)]
 
-                num = Decimal(value)
-                quant = Decimal("1." + "0" * precision)
-                num = num.quantize(quant, rounding=ROUND_HALF_UP)
-
-                entero_max = max_digits - precision
-                max_val = Decimal("9" * entero_max + "." + "9" * precision)
-                min_val = -max_val
-                if num > max_val or num < min_val:
-                    logging.warning(f"Valor fuera de rango en columna {col_name}: {value}")
-                    return None
-
-                return float(num)
-            except (InvalidOperation, ValueError, TypeError) as ex:
-                logging.warning(f"Valor inválido en columna {col_name}: {value} - Error: {ex}")
-                return None
-
-        column_specs = {
-            "invoice_total":  (2, 10),
-            "payment_value":  (2, 10),
-            "item_quantity":  (6, 18),
-            "item_price":     (2, 10),
-            "item_total":     (2, 10)
-        }
-
-        for col, (prec, digits) in column_specs.items():
-            if col in df.columns:
-                df[col] = df[col].apply(lambda v: clean_decimal(v, prec, digits, col))
-
-        df = df.where(pd.notnull(df), None)
-
-        cursor.execute("SELECT invoice_id, item_id FROM STG.invoices")
-        db_ids = set((row[0], row[1]) for row in cursor.fetchall())
-
-        df["pair_key"] = list(zip(df["invoice_id"], df["item_id"]))
-        nuevos_df = df[~df["pair_key"].isin(db_ids)].copy()
-        nuevos_df.drop(columns=["pair_key"], inplace=True)
-
-        if nuevos_df.empty:
-            print("[STG.invoices] No hay facturas nuevas para insertar.")
+        if nuevos.empty:
+            print("[STG.invoices] ✅ No hay registros nuevos para insertar.")
             return
 
-        SQL = """
-            INSERT INTO STG.invoices (
-                invoice_id, invoice_number, invoice_date, invoice_total,
-                seller_id, customer_id, customer_identification,
-                payment_method, payment_value, item_id, item_code,
-                item_quantity, item_price, item_description, item_total
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        
-        # Insertar fila por fila para detectar errores y evitar abortos masivos
-        inserted_count = 0
-        for row in nuevos_df.itertuples(index=False):
-            try:
-                cursor.execute(SQL, tuple(row))
-                inserted_count += 1
-            except Exception as e:
-                logging.error(f"Error insertando factura invoice_id={row.invoice_id}, item_id={row.item_id}: {e}")
-                continue
+        # 3️⃣ Insertar los nuevos
+        for _, row in nuevos.iterrows():
+            cursor.execute("""
+                INSERT INTO STG.invoices (
+                    invoice_id, item_id, invoice_number, invoice_date, status,
+                    created_date, customer_id, customer_name, customer_email, 
+                    customer_phone, seller_name, warehouse_name,
+                    product_id, item_description, item_quantity, item_price,
+                    item_total, item_tax, item_discount, reference_number,
+                    document_type, notes
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                row.get("invoice_id"),
+                row.get("item_id"),
+                row.get("invoice_number"),
+                row.get("invoice_date"),
+                row.get("status"),
+                row.get("created_date"),
+                row.get("customer_id"),
+                row.get("customer_name"),
+                row.get("customer_email"),
+                row.get("customer_phone"),
+                row.get("seller_name"),
+                row.get("warehouse_name"),
+                row.get("product_id"),
+                row.get("item_description"),
+                row.get("item_quantity"),
+                row.get("item_price"),
+                row.get("item_total"),
+                row.get("item_tax"),
+                row.get("item_discount"),
+                row.get("reference_number"),
+                row.get("document_type"),
+                row.get("notes")
+            ))
 
         conn.commit()
-        print(f"[STG.invoices] {inserted_count} nuevas facturas insertadas.")
+        print(f"[STG.invoices] ✅ Registros nuevos insertados: {len(nuevos)}")
 
     except Exception as e:
-        print(f"Error insertando en STG.invoices: {e}")
-        conn.rollback()
+        print("Error insertando facturas:", e)
     finally:
         cursor.close()
         conn.close()

@@ -66,5 +66,5 @@ if __name__ == '__main__':
 
     print("\n¡PROCESO COMPLETADO - FELICIDADES! Puedes consultar ahora en SQL Server....")
 
-
+ 
 
