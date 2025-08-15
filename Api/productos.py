@@ -1,14 +1,30 @@
 import requests
 import pandas as pd
 import time
-import math
+
+def safe_get(data, *keys):
+    """Extrae un valor anidado de forma segura, manejando diccionarios y listas."""
+    for key in keys:
+        if data is None:
+            return None
+        if isinstance(data, dict):
+            data = data.get(key)
+        elif isinstance(data, list) and isinstance(key, int):
+            try:
+                data = data[key]
+            except IndexError:
+                return None
+        else:
+            return None
+    return data
 
 def get_productos(access_token, max_retries=5, wait_time=60):
     """
     Descarga todos los productos de Siigo con datos extendidos.
-    Maneja reintentos ante 429 y devuelve un DataFrame listo para insertar.
+    Maneja reintentos ante 429 y devuelve un DataFrame listo.
     """
-    base_url = "https://api.siigo.com/v1"
+    print("[API] 📦 Descargando productos...")
+    base_url = "https://api.siigo.com/v1/products"
     headers_api = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
@@ -19,97 +35,69 @@ def get_productos(access_token, max_retries=5, wait_time=60):
     page = 1
 
     while True:
-        api_url = f"{base_url}/products?page={page}"
+        api_url = f"{base_url}?page={page}"
         retries = 0
 
         while retries <= max_retries:
-            response_api = requests.get(api_url, headers=headers_api)
-            if response_api.status_code == 200:
+            response = requests.get(api_url, headers=headers_api)
+            if response.status_code == 200:
                 break
-            elif response_api.status_code == 429:
+            elif response.status_code == 429:
                 print(f"[API] Error 429 en página {page}. Esperando {wait_time} segundos...")
                 time.sleep(wait_time)
                 retries += 1
             else:
-                print(f"[API] Error {response_api.status_code} en página {page}")
+                print(f"[API] Error {response.status_code} en página {page}")
                 return pd.DataFrame(all_data)
 
         if retries > max_retries:
             print("[API] Número máximo de reintentos alcanzado.")
             return pd.DataFrame(all_data)
 
-        api_response = response_api.json()
+        api_response = response.json()
         result_data = api_response.get('results', [])
         if not result_data:
             break
 
         for producto in result_data:
-            try:
-                # Básicos
-                product_id = producto.get('id')
-                product_code = producto.get('code')
-                product_name = producto.get('name')
-                product_status = producto.get('active')
+            product_price = safe_get(producto, 'prices', 0, 'price_list', 0, 'value')
+            product_stock = safe_get(producto, 'available_quantity')
+            product_cost = None
+            brand = safe_get(producto, 'additional_fields', 'brand')
+            unit_label = safe_get(producto, 'unit', 'unit_label')
 
-                # Categoría y tipo
-                category_name = None
-                account_group = producto.get('account_group', {})
-                if account_group and isinstance(account_group, dict):
-                    category_name = account_group.get('name')
-                product_type = producto.get('type')
-
-                # Precio
-                product_price = 0.0
-                prices = producto.get('prices', [])
-                if prices and isinstance(prices, list):
-                    first_price_list = prices[0].get('price_list', [])
-                    if first_price_list and isinstance(first_price_list, list):
-                        val = first_price_list[0].get('value')
-                        if val is not None and not isinstance(val, str):
-                            product_price = float(val)
-
-                # Stock
-                stock_val = producto.get('available_quantity', 0.0)
-                if stock_val is None or isinstance(stock_val, str) or math.isnan(stock_val):
-                    product_stock = 0.0
-                else:
-                    product_stock = float(stock_val)
-
-                # Campos extra
-                tax_classification = producto.get('tax_classification')
-                tax_included = producto.get('tax_included')
-                unit_label = producto.get('unit_label') or (
-                    producto.get('unit', {}).get('name') if producto.get('unit') else None
-                )
-                brand = producto.get('additional_fields', {}).get('brand')
-                created_date = producto.get('metadata', {}).get('created')
-                last_updated = producto.get('metadata', {}).get('last_updated')
-                has_stock_control = producto.get('stock_control')
-                warehouse_count = len(producto.get('warehouses', []))
-
-                all_data.append({
-                    'product_id': product_id,
-                    'product_code': product_code,
-                    'product_name': product_name,
-                    'product_price': product_price,
-                    'product_stock': product_stock,
-                    'product_status': product_status,
-                    'category_name': category_name,
-                    'product_type': product_type,
-                    'tax_classification': tax_classification,
-                    'tax_included': tax_included,
-                    'unit_label': unit_label,
-                    'brand': brand,
-                    'created_date': created_date,
-                    'last_updated': last_updated,
-                    'has_stock_control': has_stock_control,
-                    'warehouse_count': warehouse_count
-                })
-
-            except Exception as e:
-                print(f"[ERROR] Procesando producto {producto.get('code')}: {e}")
-
+            row = {
+                'product_id': producto.get('id'),
+                'product_code': producto.get('code', ''),
+                'product_name': producto.get('name', ''),
+                'product_price': product_price,
+                'product_cost': product_cost,
+                'product_stock': product_stock,
+                'product_status': producto.get('active'),
+                'category_name': safe_get(producto, 'account_group', 'name'),
+                'product_type': safe_get(producto, 'type'),
+                'tax_classification': safe_get(producto, 'tax_classification'),
+                'tax_included': safe_get(producto, 'tax_included'),
+                'unit_label': unit_label,
+                'brand': brand,
+                'created_date': safe_get(producto, 'metadata', 'created'),
+                'last_updated': safe_get(producto, 'metadata', 'last_updated'),
+                'has_stock_control': producto.get('stock_control'),
+                'warehouse_count': len(producto.get('warehouses', []))
+            }
+            all_data.append(row)
+        
+        print(f"[API] Página {page} descargada. Total acumulado: {len(all_data)} registros.")
         page += 1
 
-    df = pd.DataFrame(all_data)
-    return df
+    print(f"[DEBUG] Productos extraídos: {len(all_data)} registros.")
+    
+    # <--- CORRECCIÓN CLAVE: Definir el orden de las columnas del DataFrame
+    columns_order = [
+        'product_id', 'product_code', 'product_name', 'product_price',
+        'product_cost', 'product_stock', 'product_status', 'category_name',
+        'product_type', 'tax_classification', 'tax_included', 'unit_label',
+        'brand', 'created_date', 'last_updated', 'has_stock_control',
+        'warehouse_count'
+    ]
+    return pd.DataFrame(all_data, columns=columns_order)
