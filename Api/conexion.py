@@ -93,12 +93,12 @@ def insert_products(df: pd.DataFrame):
             return
 
         def safe_float(val):
-            if val is None or val == '':
-                return None
+            if val is None or val == '' or (isinstance(val, float) and math.isnan(val)):
+                return 0  # <--- CAMBIO CLAVE: Ahora devuelve 0 en lugar de None
             try:
                 return round(float(val), 2)
             except (ValueError, TypeError):
-                return None
+                return 0
 
         def safe_int(val):
             if val is None or val == '':

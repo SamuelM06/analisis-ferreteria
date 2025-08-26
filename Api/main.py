@@ -24,7 +24,7 @@ def get_token():
     if response.status_code == 200:
         token_data = response.json()
         access_token = token_data["access_token"]
-        print("TOKEN obtenido correctamente.")
+        print("TOKEN obtenido correctamente |  [Accediendo a los datos]")
         print("Cargando los datos.....")
         return access_token
     else:
