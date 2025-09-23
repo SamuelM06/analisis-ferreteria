@@ -4,3 +4,5 @@
 env/
 _pycache_/
 Sql/
+errores_invoices.log
+main.py
