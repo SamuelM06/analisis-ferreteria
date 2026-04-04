@@ -5,11 +5,11 @@ import pandas as pd
 
 from conexion import insert_customers, insert_products, insert_invoices
 
-os.system("cls")  
+os.system("cls")         
 
 # Datos de acceso
-usuario = "shirleymariadiazherrera@gmail.com"
-access_key = "ZDE4ODEzOTItZDQ3NC00NTNhLTg3NDYtNzRjOTI4NGQ4ZmJiOk5IaG0oNXsjL0E="
+usuario = "Gmail o Usuario de Siigo"
+access_key = "(Token User)"
 
 def get_token():
     url_auth = "https://api.siigo.com/auth"
