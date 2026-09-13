@@ -1,0 +1,63 @@
+# ==============================================================================
+# Git Ignore - Pipeline ETL Análisis Ferretería
+# ==============================================================================
+
+# Entornos Virtuales de Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Variables de entorno y credenciales (¡NUNCA SUBIR A GIT!)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Archivos de caché y compilación de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Archivos de Logs y Tareas
+*.log
+logs/
+!logs/.gitkeep
+errores_invoices.log
+log_tarea.txt
+
+# Bases de datos locales y backups
+*.sqlite
+*.sqlite3
+*.db
+*.mdf
+*.ldf
+*.bak
+
+# Entornos de desarrollo e IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db

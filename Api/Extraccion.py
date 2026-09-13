@@ -1,192 +1,124 @@
-import os
+import sys
+from pathlib import Path
+from datetime import date, timedelta
 import requests
 import json
-from datetime import date, timedelta
 import pandas as pd
 
-os.system("cls")
+# Asegurar importación del directorio raíz
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
+from config.settings import settings
+from src.utils.logger import get_logger
 
+logger = get_logger("Extraccion_Script")
 
-# DATOS DE ACCESO
+def main():
+    logger.info("Iniciando script de prueba de extracción...")
 
-usuario = "shirleymariadiazherrera@gmail.com"  
+    # Validar credenciales de entorno
+    settings.validate()
 
-access_key = "ZDE4ODEzOTItZDQ3NC00NTNhLTg3NDYtNzRjOTI4NGQ4ZmJiOk5IaG0oNXsjL0E="        
+    url_auth = settings.SIIGO_AUTH_URL
+    body_auth = {
+        "username": settings.SIIGO_USERNAME,
+        "access_key": settings.SIIGO_ACCESS_KEY
+    }
+    headers_auth = {
+        "Content-Type": "application/json"
+    }
 
+    response = requests.post(url_auth, headers=headers_auth, json=body_auth, timeout=30)
+    if response.status_code == 200:
+        token_data = response.json()
+        access_token = token_data["access_token"]
+        logger.info("TOKEN obtenido correctamente.")
+    else:
+        logger.error(f"Error de autenticación: {response.status_code} - {response.text}")
+        sys.exit(1)
 
+    # Consulta con rango de fecha
+    Date_last = date.today() - timedelta(days=1)
+    Looking_Type = "created_end"
+    reference_type = "invoices"
 
-# URL DEL ENDPOINT DE AUTENTICACION
+    api_url = f"{settings.SIIGO_API_BASE_URL}/{reference_type}?{Looking_Type}={Date_last}"
+    headers_api = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+        "Partner-Id": settings.SIIGO_PARTNER_ID
+    }
 
-url_auth = "https://api.siigo.com/auth"
+    response_api = requests.get(api_url, headers=headers_api, timeout=30)
+    if response_api.status_code == 200:
+        api = response_api.json()
+        result_data = api.get("results", [])
+        logger.info(f"Registros obtenidos: {len(result_data)}")
+        flattened_data = []
 
+        for invoice in result_data:
+            invoice_id = invoice.get("id")
+            invoice_number = invoice.get("number")
+            invoice_date = invoice.get("date")
+            invoice_total = invoice.get("total")
+            invoice_seller = invoice.get("seller")
 
+            customer_data = invoice.get("customer", {})
+            customer_id = customer_data.get("id")
+            customer_identification = customer_data.get("identification")
 
-#  body de autenticación
+            payments = invoice.get("payments", [])
+            payment_method = payments[0]["name"] if payments else None
+            payment_value = payments[0]["value"] if payments else None
 
-body_auth = {
-
-    "username": usuario,
-
-    "access_key": access_key
-
-}
-
-
-
-# Headers para autenticación
-
-headers_auth = {
-
-    "Content-Type": "application/json"
-
-}
-
-
-
-# PETICION POST PARA GENERAR TOKEN
-
-response = requests.post(url_auth, headers=headers_auth, data=json.dumps(body_auth))
-
-
-
-# Manejo de la respuesta (creación de token)
-
-if response.status_code == 200:
-
-    token_data = response.json()
-
-    access_token = token_data["access_token"]    # Guardar el token de acceso
-
-    print("TOKEN obtenido correctamente.")
-
-else:
-
-    print(f"Error de autenticación: {response.status_code}")
-
-    print(response.text)
-
-    exit(1)
-
-
-
-# URL del endpoint de api
-
-# Resta un día usando timedelta
-Date_last = date.today() - timedelta(days=1)
-Looking_Type='created_end'
-reference_type='invoices'
-
-
-api_url = f"https://api.siigo.com/v1/{reference_type}?{Looking_Type}={Date_last}"
-
-
-
-# Headers para la consulta (aquí agregamos Partner-Id)
-
-headers_api = {
-
-    "Authorization": f"Bearer {access_token}",
-
-    "Content-Type": "application/json",
-
-    "Partner-Id": "AnalisisFerreteria"
-
-}
-
-
-
-# Solicitud GET de api
-flattened_data=[]
-
-response_api = requests.get(api_url, headers=headers_api)
-
-if response_api.status_code == 200:
-
-    api = response_api.json()
-
-    #print(json.dumps(api, indent=4, ensure_ascii=False))
-
-    result_data = api['results']
-    pagination=api['pagination']
-    print("Accediendo al atributo 'result':")
-    
-    
-    #for invoice in result_data:
-    #   print(invoice.get('description'))
-
-
-    for invoice in result_data:
-    # Extract common invoice-level data
-        invoice_id = invoice.get('id')
-        invoice_number = invoice.get('number')
-        invoice_date = invoice.get('date')
-        invoice_total = invoice.get('total')
-        invoice_seller = invoice.get('seller')
-
-        # Extract nested customer data
-        customer_data = invoice.get('customer', {})
-        customer_id = customer_data.get('id')
-        customer_identification = customer_data.get('identification')
-        
-        # Extract nested payments data
-        payments = invoice.get('payments', [])
-        payment_method = payments[0]['name'] if payments else None
-        payment_value = payments[0]['value'] if payments else None
-
-        # Check if there are items in the invoice
-        items = invoice.get('items', [])
-        if items:
-            # Iterate over each item in the current invoice
-            for item in items:
-                # Create a dictionary for the flattened row
+            items = invoice.get("items", [])
+            if items:
+                for item in items:
+                    row = {
+                        "invoice_id": invoice_id,
+                        "invoice_number": invoice_number,
+                        "invoice_date": invoice_date,
+                        "invoice_total": invoice_total,
+                        "seller_id": invoice_seller,
+                        "customer_id": customer_id,
+                        "customer_identification": customer_identification,
+                        "payment_method": payment_method,
+                        "payment_value": payment_value,
+                        "item_id": item.get("id"),
+                        "item_code": item.get("code"),
+                        "item_quantity": item.get("quantity"),
+                        "item_price": item.get("price"),
+                        "item_description": item.get("description"),
+                        "item_total": item.get("total")
+                    }
+                    flattened_data.append(row)
+            else:
                 row = {
-                    'invoice_id': invoice_id,
-                    'invoice_number': invoice_number,
-                    'invoice_date': invoice_date,
-                    'invoice_total': invoice_total,
-                    'seller_id': invoice_seller,
-                    'customer_id': customer_id,
-                    'customer_identification': customer_identification,
-                    'payment_method': payment_method,
-                    'payment_value': payment_value,
-                    'item_id': item.get('id'),
-                    'item_code': item.get('code'),
-                    'item_quantity': item.get('quantity'),
-                    'item_price': item.get('price'),
-                    'item_description': item.get('description'),
-                    'item_total': item.get('total')
+                    "invoice_id": invoice_id,
+                    "invoice_number": invoice_number,
+                    "invoice_date": invoice_date,
+                    "invoice_total": invoice_total,
+                    "seller_id": invoice_seller,
+                    "customer_id": customer_id,
+                    "customer_identification": customer_identification,
+                    "payment_method": payment_method,
+                    "payment_value": payment_value,
+                    "item_id": None,
+                    "item_code": None,
+                    "item_quantity": None,
+                    "item_price": None,
+                    "item_description": None,
+                    "item_total": None
                 }
-            flattened_data.append(row)
-        else:
-            # If no items, create a row with NaN values for item-specific fields
-            row = {
-                'invoice_id': invoice_id,
-                'invoice_number': invoice_number,
-                'invoice_date': invoice_date,
-                'invoice_total': invoice_total,
-                'seller_id': invoice_seller,
-                'customer_id': customer_id,
-                'customer_identification': customer_identification,
-                'payment_method': payment_method,
-                'payment_value': payment_value,
-                'item_id': None,
-                'item_code': None,
-                'item_quantity': None,
-                'item_price': None,
-                'item_description': None,
-                'item_total': None
-            }
-            flattened_data.append(row)
+                flattened_data.append(row)
 
-# Convert the list of flattened dictionaries to a DataFrame
-    df = pd.DataFrame(flattened_data)
-    print(df)
+        df = pd.DataFrame(flattened_data)
+        logger.info(f"DataFrame generado exitosamente ({len(df)} filas).")
+        print(df.head())
+    else:
+        logger.error(f"Error al consultar API: {response_api.status_code} - {response_api.text}")
 
-else:
-
-    print("Error al obtener api:")
-
-    print(response_api.status_code)
-
-    print(response_api.text)
+if __name__ == "__main__":
+    main()

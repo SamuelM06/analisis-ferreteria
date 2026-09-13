@@ -1,70 +1,18 @@
-import json
-import requests
-import os
-import pandas as pd
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Punto de entrada heredado (Api/main.py).
+Redirige la ejecución al nuevo orquestador principal del proyecto (main.py).
+"""
 
-from conexion import insert_customers, insert_products, insert_invoices
+import sys
+from pathlib import Path
 
-os.system("cls")         
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
-# Datos de acceso
-usuario = "Gmail o Usuario de Siigo"
-access_key = "(Token User)"
+from main import run_pipeline
 
-def get_token():
-    url_auth = "https://api.siigo.com/auth"
-    body_auth = {
-        "username": usuario,
-        "access_key": access_key
-    }
-    headers_auth = {
-        "Content-Type": "application/json"
-    }
-    response = requests.post(url_auth, headers=headers_auth, data=json.dumps(body_auth))
-    if response.status_code == 200:
-        token_data = response.json()
-        access_token = token_data["access_token"]
-        print("TOKEN obtenido correctamente |  [Accediendo a los datos]")
-        print("Cargando los datos.....")
-        return access_token
-    else:
-        print(f"Error de autenticación: {response.status_code}")
-        print(response.text)
-        exit(1)
-
-if __name__ == '__main__':
-    access_token = get_token()
-
-    #--- CLIENTES ---
-    try:
-        import clientes
-        print("Obteniendo clientes...")
-        df_clientes = clientes.get_clientes(access_token)
-        insert_customers(df_clientes)
-    except Exception as e:
-        print(f"Error con clientes: {e}")
-
-    #--- PRODUCTOS ---
-    try:
-        import productos
-        print("Obteniendo productos...")
-        df_productos = productos.get_productos(access_token)
-        df_productos = df_productos.where(pd.notnull(df_productos), None)
-        insert_products(df_productos)
-    except Exception as e:
-        print(f"Error con productos: {e}")
-
-    #--- FACTURAS ---
-    try:  
-        import facturas
-        print("Obteniendo facturas...")
-        df_facturas = facturas.get_facturas(access_token)
-        df_facturas = df_facturas.where(pd.notnull(df_facturas), None)
-        insert_invoices(df_facturas)
-    except Exception as e: 
-        print(f"Error con facturas: {e}")
-
-    print("\n¡PROCESO COMPLETADO - FELICIDADES! Puedes consultar ahora en SQL Server....")
-
- 
-
+if __name__ == "__main__":
+    run_pipeline()
